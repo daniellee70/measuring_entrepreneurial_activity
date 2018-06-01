@@ -12,9 +12,9 @@ output:
 knitr::opts_chunk$set(message = F, warning = F, collapse = T, echo = T, results = 'markup')
 ```
 
-## Import and get a sense of data
+This is a modified version of a student project I assigned in my business statistics course during spring 2018. It aims to measure the entrepreneurial activity in the Lakes Region, using the U.S. Census data, American Community Survey. It covers two periods: 5-year estimates over 2007-2011 and 2012-2016.  
 
-```{r results="hide"}
+```{r}
 # Import data
 data <- read.csv("C:/Users/sclee1/OneDrive/Documents/R/busStatistics/data/census2.csv")
 
@@ -23,8 +23,159 @@ str(data)
 summary(data)
 ```
 
-## Geofacet
+## Which towns has the highest entrepreurial spirit in the Lakes Region?
+I used the self-employment income from the U.S. Census as a proxy for the entrepreneurial activity. And data visualization using the geofacet package helps reveal geographical patterns as it resemebles the actual geography of the Lakes Region. It's apparent that Lake Winnipesaukee is the center of the entrepreneurial activity in the Lakes Region with Laconia at the top, followed by Wolfeboro, Gilford, Moultonboro and Meredith. But Laconia's large number may just reflect a larger population and doesn't necessarily mean that the city is more entrepreneurial than other towns.  
 ```{r}
+# Load packages
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(geofacet)
+library(stringr)
+
+# Create a grid, nh_grid for use of geofacet package
+nameTown <- c("Sandwich", "Tamworth", "Freedom", "Hebron", "Ashland", "Holderness", "Center Harbor", "Moultonborough", "Tuftonboro", "Ossipee", "Effingham", "Alexandria", "Bristol", "Bridgewater", "New Hampton", "Meredith", "Laconia", "Gilford", "Wolfeboro", "Danbury", "Hill", "Sanbornton", "Belmont", "Alton", "Andover", "Franklin", "Tilton", "Gilmanton", "Northfield", "Barnstead")
+code <- c("Sw", "Tw", "Fd", "Hb", "Al", "Hn", "Ch", "Mb", "Tb", "Op", "Eh", "Ad", "Bt", "Bw", "Nh", "Md", "Ln", "Gf", "Wb", "Db", "Hl", "Sb", "Bm", "At", "Av", "Fk", "Tt", "Gm", "Nf", "Bs")
+row <- c(1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,4,3,3,4,4,4,5,4,5,5,5,5,6,6)
+col <- c(6,7,9,1,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,1,2,4,6,8,2,3,4,7,4,8)
+nh_grid <- data.frame(nameTown, code, row, col)
+
+data_geo <- data
+colnames(data_geo)[colnames(data_geo) == "Town"] <- "nameTown"
+
+data_geo %>%
+  filter(Year ==2016,
+         !nameTown %in% c("United States", "New Hampshire")) %>%
+  select(nameTown, incomeLabor_SelfEmpl) %>%
+  gather(var, value, c("incomeLabor_SelfEmpl")) %>%
+  ggplot(aes(x = var, y = value/1000000, fill = var)) +
+  geom_col(show.legend = FALSE) +
+  facet_geo(~ nameTown, grid = nh_grid) +
+  labs(title = "Self-employment Income during 2012-16",
+       x = NULL,
+       y = "in millions of dollars",
+       caption = "Data source: American Community Survey, 5-year estimate") +
+  theme(axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank())
+```
+
+## Which town is entrepreneurial again?
+So, in order to control for the size of population, let's divide the self-employment income by population. Surprisingly, more than half of the towns make more income per person than the rest of the state from self-employment. Again, does this mean Lakes region towns are more entrepreneurial?
+
+```{r}
+data_geo %>%
+  filter(Year ==2016,
+         !nameTown %in% c("United States", "New Hampshire")) %>%
+  mutate(incomeLabor_SelfEmpl_perPerson = incomeLabor_SelfEmpl / popTotal) %>%
+  select(nameTown, incomeLabor_SelfEmpl_perPerson) %>%
+  gather(var, value, c("incomeLabor_SelfEmpl_perPerson")) %>%
+  ggplot(aes(x = var, y = value/1000, fill = var)) +
+  geom_col(show.legend = FALSE) +
+  facet_geo(~ nameTown, grid = nh_grid) +
+  labs(title = "Self-employment Income per Person during 2012-16",
+       x = NULL,
+       y = "in thousands of dollars",
+       caption = "Data source: American Community Survey, 5-year estimate") +
+  theme(axis.text.x=element_blank(), 
+        axis.ticks.x=element_blank())
+
+# self-employment income per person
+data %>%
+  filter(Year ==2016) %>%
+  mutate(incomeLabor_SelfEmpl_perPerson = incomeLabor_SelfEmpl / popTotal) %>%
+  select(Town, incomeLabor_SelfEmpl_perPerson, benchM) %>%
+  ggplot(aes(reorder(x = Town, incomeLabor_SelfEmpl_perPerson), y = incomeLabor_SelfEmpl_perPerson/1000, fill = benchM)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Self-employment Income per Person during 2012-16",
+       x = NULL,
+       y = "in thousands of dollars") 
+```
+
+## Looking at wage and salary income
+More self-employment income may mean a higher level of entrepreneurial activity. But it may also reflect lack of wage and salary jobs. So I look at wage and salary income per person.When measured by wage and salary income, only Gilford did better than the rest of the state. And less than half of the towns did better than the rest of the country. It speaks volumes about lack of jobs, in particular high-paying jobs. A greater portion of the resident population earn their income from working for themselves than the rest of the state, probably becasue they are forced to do so for lack of alternatives.
+
+```{r}
+# Wage and salary income per person
+data %>%
+  filter(Year ==2016) %>%
+  mutate(incomeLabor_WageSalary_perPerson = incomeLabor_WageSalary / popTotal) %>%
+  select(Town, incomeLabor_WageSalary_perPerson, benchM) %>%
+  ggplot(aes(reorder(x = Town, incomeLabor_WageSalary_perPerson), y = incomeLabor_WageSalary_perPerson/1000, fill = benchM)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Wage and Salary Income per Person during 2012-16",
+       x = NULL,
+       y = "in thousands of dollars") 
+```
+
+When looking at labor income, which is the sum of self-employment income and wage and salary income, the story remains the same. Only Gilford and Sanbornton earn more income from current labor in comparison to the rest of the state.
+```{r}
+# Labor income per person
+data %>%
+  filter(Year ==2016) %>%
+  mutate(incomeLabor_perPerson = incomeLabor / popTotal) %>%
+  select(Town, incomeLabor_perPerson, benchM) %>%
+  ggplot(aes(reorder(x = Town, incomeLabor_perPerson), y = incomeLabor_perPerson/1000, fill = benchM)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Labor Income per Person during 2012-16",
+       x = NULL,
+       y = "in thousands of dollars") 
+```
+
+In addition to labor income, there is an alternative soruce of income, non-labor income, which comprises 1) investment income (interest, dividends, and rental income) and 2) transfer payment income (social security, medicare, welfare, etc). When considering non-labor income, many towns do better than the rest of the state reflecting a larger porportion of retirees in the Lakes Region.
+```{r}
+# Total income per person
+data %>%
+  filter(Year ==2016) %>%
+  mutate(incomeTotal_perPerson = incomeTotal / popTotal) %>%
+  select(Town, incomeTotal_perPerson, benchM) %>%
+  ggplot(aes(reorder(x = Town, incomeTotal_perPerson), y = incomeTotal_perPerson/1000, fill = benchM)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Total Income per Person during 2012-16",
+       x = NULL,
+       y = "in thousands of dollars") 
+```
+
+investment income versus transfer payment
+
+I divided investment income by transfer payment income to get the ratio, which reveals which towns rely more on transfer payment income and which towns has rich retirees.
+```{r}
+# Total income per person
+data %>%
+  filter(Year ==2016) %>%
+  mutate(ratio = incomeInvest / incomeTransferPayment) %>%
+  select(Town, ratio, benchM) %>%
+  ggplot(aes(reorder(x = Town, ratio), y = ratio, fill = benchM)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Investment Income per Transfer Payment Income during 2012-16",
+       x = NULL,
+       y = "ratio") 
+```
+
+
+
+
+```{r}
+data %>%
+  select(Town, incomeLabor_SelfEmpl, Year, benchM) %>%
+  mutate(Year = paste0("Yr",Year)) %>%
+  spread(Year, incomeLabor_SelfEmpl) %>%
+  ggplot(aes(reorder(x = Town, (Yr2016-Yr2011)/Yr2011), y = (Yr2016-Yr2011)/Yr2011, fill = benchM)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Percent Change in Self-Employment Income between 2007-11 and 2012-16",
+       x = NULL,
+       y = "Percent Change in Income") 
+
+```
+
+## Percent change by geofacet
+```{r}
+library(stringr)
 library(geofacet)
 # Create a grid, nh_grid for use of geofacet package
 nameTown <- c("Sandwich", "Tamworth", "Freedom", "Hebron", "Ashland", "Holderness", "Center Harbor", "Moultonborough", "Tuftonboro", "Ossipee", "Effingham", "Alexandria", "Bristol", "Bridgewater", "New Hampton", "Meredith", "Laconia", "Gilford", "Wolfeboro", "Danbury", "Hill", "Sanbornton", "Belmont", "Alton", "Andover", "Franklin", "Tilton", "Gilmanton", "Northfield", "Barnstead")
@@ -36,31 +187,10 @@ nh_grid <- data.frame(nameTown, code, row, col)
 data_geo <- data
 colnames(data_geo)[colnames(data_geo) == "Town"] <- "nameTown"
 
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-
-data %>%
-  select(Town, incomeLabor_SelfEmpl, Year, benchM) %>%
-  mutate(Year = paste0("Yr",Year)) %>%
-  spread(Year, incomeLabor_SelfEmpl) %>%
-  ggplot(aes(reorder(x = Town, (Yr2016-Yr2011)/Yr2011), y = (Yr2016-Yr2011)/Yr2011, fill = benchM)) +
-  geom_col(show.legend = FALSE) +
-  coord_flip() +
-  labs(title = "Percent Change in Self-Employment Income between 2007-11 and 2012-16",
-       x = NULL,
-       y = "Percent Change in Income")
-
-
-```
-
-## Percent change by geofacet
-```{r}
-library(stringr)
 data_geo %>%
   filter(!nameTown %in% c("United States", "New Hampshire")) %>%
   select(nameTown, incomeLabor_SelfEmpl, incomeLabor_WageSalary, Year) %>%
-  mutate(Year = paste0("Yr",Year),) %>%
+  mutate(Year = paste0("Yr",Year)) %>%
   gather(var, value, c("incomeLabor_SelfEmpl", "incomeLabor_WageSalary")) %>%
   mutate(var = str_extract(var, "Self|Wage")) %>% #change the text for shorter axis text in graph
   spread(Year, value)  %>%
